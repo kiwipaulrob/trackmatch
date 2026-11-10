@@ -1,4 +1,4 @@
-from trackmatch.normalize import clean_artist, clean_title
+from trackmatch.normalize import clean_artist, clean_title, split_version
 
 
 def test_strips_track_numbers():
@@ -25,3 +25,33 @@ def test_empty_and_none():
     assert clean_title("") == ""
     assert clean_title(None) == ""
     assert clean_artist(None) == ""
+
+
+def test_parenthetical_split():
+    base, segs = split_version("Song (demo)")
+    assert base == "song" and segs == ["demo"]
+
+
+def test_bracket_split():
+    base, segs = split_version("Song [remastered]")
+    assert base == "song" and segs == ["remastered"]
+
+
+def test_feat_split():
+    base, segs = split_version("Song feat. Someone")
+    assert base == "song" and segs == ["feat someone"]
+    base, segs = split_version("Song ft Someone Else")
+    assert base == "song" and segs == ["ft someone else"]
+
+
+def test_no_segments():
+    assert split_version("Plain Song") == ("plain song", [])
+
+
+def test_artist_the_reorder():
+    assert clean_artist("Chills, The") == "the chills"
+
+
+def test_va_markers():
+    for va in ("Various Artists", "various", "VA", "unknown", ""):
+        assert clean_artist(va) == "", va

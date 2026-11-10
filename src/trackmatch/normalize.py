@@ -49,6 +49,34 @@ def clean_artist(artist):
     return text
 
 
+_PAREN = re.compile(r"\s*[\(\[](.*?)[\)\]]\s*")
+_FEAT = re.compile(r"\s*\b(feat|ft|featuring)\b[\. :].*$", re.IGNORECASE)
+
+
+def split_version(title):
+    """Split 'Song (demo) feat. X' -> ('song', ['demo', 'feat x']).
+
+    Base is cleaned for comparison; segments are retained as version
+    signals (remix/live/demo/edit) for the version_conflict feature.
+    """
+    if not title:
+        return "", []
+    text = str(title).strip()
+    segs = []
+    for m in _PAREN.finditer(text):
+        seg = _basic(m.group(1))
+        if seg:
+            segs.append(seg)
+    text = _PAREN.sub(" ", text)
+    m = _FEAT.search(text)
+    if m:
+        seg = _basic(m.group(0))
+        if seg:
+            segs.append(seg)
+        text = text[: m.start()]
+    return _basic(text), segs
+
+
 def clean_album(album):
     """Album cleaning is title cleaning without track-number stripping."""
     return _basic(album)
