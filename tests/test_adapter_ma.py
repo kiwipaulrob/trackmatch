@@ -86,3 +86,70 @@ def test_prefilter_perf_4k_entries_x_100k_library():
     query_s = time.perf_counter() - t0
     assert query_s < 60, f"prefilter too slow: {query_s:.1f}s"
     print(f"\nbuild {build_s:.1f}s, 4k queries {query_s:.1f}s")
+
+
+class FakeTransport:
+    """In-memory playlist: {uri} list; add() rejects poison URIs."""
+
+    def __init__(self, tracks, poison=()):
+        self.tracks = list(tracks)
+        self.poison = set(poison)
+        self.calls = []
+
+    def fetch(self, pid):
+        self.calls.append(("fetch", pid))
+        return [{"position": i, "uri": u} for i, u in enumerate(self.tracks)]
+
+    def remove(self, pid, positions):
+        self.calls.append(("remove", pid, list(positions)))
+        keep = [u for i, u in enumerate(self.tracks) if i not in set(positions)]
+        self.tracks = keep
+
+    def add(self, pid, uris):
+        self.calls.append(("add", pid, list(uris)))
+        for u in uris:
+            if u in self.poison:
+                raise RuntimeError(f"poison uri rejected: {u}")
+        self.tracks.extend(uris)
+
+
+def test_rebuild_playlist_happy_path_batches():
+    from trackmatch.adapters.ma import RebuildError, rebuild_playlist
+    tr = FakeTransport([f"old://{i}" for i in range(3)])
+    new = [f"library://track/{i}" for i in range(5)]
+    rep = rebuild_playlist(tr, "9", new, batch_size=2)
+    assert rep["verified"] is True
+    assert rep["before"] == 3 and rep["after"] == 5
+    assert rep["snapshot_uris"] == [f"old://{i}" for i in range(3)]
+    assert tr.tracks == new
+    assert tr.calls[0][0] == "fetch"  # snapshot before any mutation
+    assert [c[0] for c in tr.calls].count("add") == 3  # 2+2+1
+
+
+def test_rebuild_playlist_poison_reports_no_restore():
+    from trackmatch.adapters.ma import RebuildError, rebuild_playlist
+    tr = FakeTransport(["old://0"], poison={"library://poison"})
+    try:
+        rebuild_playlist(tr, "9", ["library://ok", "library://poison"])
+        assert False, "should have raised"
+    except RebuildError as e:
+        assert e.report["snapshot_uris"] == ["old://0"]
+        assert e.report["added"] == 0  # first batch raised
+        assert e.report["verified"] is False
+        assert "poison" in e.report["error"]
+    # no auto-restore attempted: old entry stays removed, partial state kept
+    assert tr.tracks == []
+
+
+def test_rebuild_playlist_prefetch_failure_no_mutation():
+    from trackmatch.adapters.ma import RebuildError, rebuild_playlist
+
+    class Dead:
+        def fetch(self, pid):
+            return None
+
+    try:
+        rebuild_playlist(Dead(), "9", ["library://x"])
+        assert False, "should have raised"
+    except RebuildError as e:
+        assert "pre-mutation" in str(e)

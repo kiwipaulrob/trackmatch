@@ -98,3 +98,54 @@ def fetch_library_tracks(api_call, page_size=500):
             break
         offset += page_size
     return out
+
+
+class RebuildError(Exception):
+    """Playlist rebuild failed mid-apply; `.report` has snapshot + state."""
+
+    def __init__(self, msg, report=None):
+        super().__init__(msg)
+        self.report = report or {}
+
+
+def rebuild_playlist(transport, pid, new_uris, batch_size=25):
+    """Rebuild one playlist IN PLACE (ported sweep-script semantics).
+
+    snapshot -> remove-all by position -> verify empty -> batched add ->
+    verify count. `transport` provides fetch(pid), remove(pid, positions),
+    add(pid, uris). Verification is by COUNT, not URI equality: MA
+    normalizes library:// merge URIs to the local file mapping on ingest,
+    so post-add URI comparison always mismatches (lesson from the Nov 2026
+    sweep). Returns a report dict. Raises RebuildError (with .report incl.
+    snapshot) on any failure after mutation starts — never auto-restores:
+    the old URIs may no longer be addable, so restore can destroy what the
+    rebuild saved.
+    """
+    snapshot = transport.fetch(pid)
+    if snapshot is None:
+        raise RebuildError(f"pid {pid}: pre-mutation fetch failed")
+    report = {"pid": pid, "before": len(snapshot),
+              "snapshot_uris": [t.get("uri", "") for t in snapshot],
+              "target": len(new_uris), "added": 0, "verified": False}
+
+    positions = [t.get("position", i) for i, t in enumerate(snapshot)]
+    try:
+        if positions:
+            transport.remove(pid, positions)
+        if transport.fetch(pid):
+            raise RebuildError(f"pid {pid}: not empty after remove")
+        for i in range(0, len(new_uris), batch_size):
+            transport.add(pid, new_uris[i:i + batch_size])
+            report["added"] += len(new_uris[i:i + batch_size])
+        final = transport.fetch(pid)
+        if final is None or len(final) != len(new_uris):
+            raise RebuildError(
+                f"pid {pid}: count mismatch "
+                f"({len(final) if final is not None else 'fetch-failed'}"
+                f" vs {len(new_uris)})")
+        report["verified"] = True
+        report["after"] = len(final)
+    except Exception as e:
+        report["error"] = str(e)
+        raise RebuildError(str(e), report)
+    return report
