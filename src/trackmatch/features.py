@@ -49,10 +49,15 @@ def pair_features(old, new):
         "title_sim": ratio(clean_title(old.get("title", "")),
                            clean_title(new.get("title", ""))),
         "title_base_sim": ratio(old_base, new_base),
-        "album_sim": ratio(clean_album(old.get("album", "")),
-                           clean_album(new.get("album", ""))),
+        "album_sim": (ratio(clean_album(old.get("album", "")),
+                           clean_album(new.get("album", "")))
+                      if ((old.get("album") or "").strip()
+                          and (new.get("album") or "").strip())
+                      else 0.5),
+        # One-sided album knowledge is absence of evidence, not
+        # disagreement: only a known-vs-known comparison informs.
         "album_known": bool((old.get("album") or "").strip()
-                            or (new.get("album") or "").strip()),
+                            and (new.get("album") or "").strip()),
         "duration_delta": duration_delta,
         "provider_equal": bool(old.get("provider"))
         and old.get("provider") == new.get("provider"),
