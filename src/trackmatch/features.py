@@ -51,6 +51,8 @@ def pair_features(old, new):
         "title_base_sim": ratio(old_base, new_base),
         "album_sim": ratio(clean_album(old.get("album", "")),
                            clean_album(new.get("album", ""))),
+        "album_known": bool((old.get("album") or "").strip()
+                            or (new.get("album") or "").strip()),
         "duration_delta": duration_delta,
         "provider_equal": bool(old.get("provider"))
         and old.get("provider") == new.get("provider"),
