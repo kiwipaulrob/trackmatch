@@ -38,14 +38,15 @@ def clean_artist(artist):
     """Clean an artist name: VA markers -> '', 'X, The' -> 'the x'."""
     if not artist:
         return ""
-    text = _basic(artist)
-    if text in VA_MARKERS:
-        return ""
+    raw = str(artist).strip().lower()
     for word in _END_WORDS:
         suffix = ", " + word
-        if text.endswith(suffix):
-            text = word + " " + text[: -len(suffix)].strip()
+        if raw.endswith(suffix):
+            raw = word + " " + raw[: -len(suffix)].strip()
             break
+    text = _basic(raw)
+    if text in VA_MARKERS:
+        return ""
     return text
 
 
