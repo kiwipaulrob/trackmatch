@@ -1,6 +1,17 @@
 import json
 
-from trackmatch.harness import replay_playlist
+from trackmatch import bands
+from trackmatch.features import pair_features
+from trackmatch.harness import compare_decisions, is_swap, replay_playlist, summarize
+from trackmatch.score import score
+
+
+def _new_fn(old, new):
+    if new is None:
+        return 0.0, "reject"
+    feats = pair_features(old, new)
+    conf, _ = score(feats)
+    return conf, bands.assign(conf, feats)
 
 
 class FakeMA:
@@ -59,3 +70,27 @@ def test_old_entries_carry_provider(tmp_path):
     pairs = list(replay_playlist(_snap(tmp_path), ma))
     assert pairs[0][0]["provider"] == "deezer"
     assert pairs[0][0]["artist"] == "A"
+
+
+def test_is_swap():
+    assert is_swap(({"uri": "a"}, {"uri": "b"})) is True
+    assert is_swap(({"uri": "a"}, {"uri": "a"})) is False
+    assert is_swap(({"uri": "a"}, None)) is False
+
+
+def test_compare_verdicts():
+    pairs = [
+        ({"pos": 1, "artist": "A", "title": "One", "album": "X",
+          "uri": "deezer--D://track/1", "provider": "deezer"},
+         {"pos": 1, "artist": "A", "title": "One", "album": "X",
+          "uri": "library://track/11", "provider": "library"}),  # swap, exact
+        ({"pos": 2, "artist": "B", "title": "Two", "album": "",
+          "uri": "deezer--D://track/2", "provider": "deezer"},
+         {"pos": 2, "artist": "B", "title": "Two", "album": "",
+          "uri": "deezer--D://track/2", "provider": "deezer"}),  # untouched
+        ({"pos": 3, "artist": "C", "title": "Three", "album": "",
+          "uri": "s1://t/3", "provider": "s1"}, None),  # vanished
+    ]
+    rows = compare_decisions(pairs, _new_fn)
+    assert [r["verdict"] for r in rows] == ["reproduced", "agree-keep", "agree-keep"]
+    assert summarize(rows) == {"reproduced": 1, "agree-keep": 2}
