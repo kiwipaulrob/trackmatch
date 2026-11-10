@@ -226,15 +226,33 @@ Commit.
 
 Note: needs MA read access; test with fakes, run for real in Task 10. Commit.
 
+Deviation (10 Nov 2026, implemented): positional join was replaced with
+URI-identity alignment (`harness.align`, SequenceMatcher on URI streams).
+Rebuilds that drop entries shift positions; naive zipping reported 430
+phantom swaps on pl-1144 vs 92 genuine. Live-only insertions are skipped,
+true removals yield (old, None). Tests: shift-by-insertion, removal.
+
 ### Task 10: Old-vs-new comparison report
 
 **Objective:** `harness.compare(snapshot_paths, old_match_fn, report_path)` runs the OLD binary matcher (`plan()` from dj_playlist_local_sweep, imported, dry-run only) and the NEW scorer over the same entries and writes per-entry agreement/disagreement JSONL: `{pos, old_uri, old_match_decision, new_confidence, new_band, agree}`.
 
 Run for real against ≥5 already-swept playlists (June Dandelion set). Success criterion for Phase 3: new scorer reproduces 100% of old correct swaps (no `auto`→miss regressions) — disagreements must all be old-miss/new-catch or review-queue upgrades. Commit code + report sample (reports/ dir, gitignored except samples).
 
+Outcome (10 Nov 2026, implemented as `examples/replay_sweep.py` — snapshot
++live-MA join, not old-matcher import: 7 playlists, 872 positions, 97
+genuine swaps): 88 auto-reproduced, 9 missed, all 9 stale-window artifacts
+(snapshot predates a later rebuild pass; old songs absent from live, so
+rejection is CORRECT). Genuine record 88/88. Verdicts in
+replay-verdicts.jsonl (gitignored).
+
 ### Task 11: Weight tuning loop
 
 **Objective:** Grid-search weights/thresholds against fixture + replay labels to minimize review-queue size at zero auto-errors. `harness.tune(pairs, grid)` → best params + metrics table. Document chosen params in `docs/weights.md` with the metric table. Commit.
+
+Outcome (10 Nov 2026): no weight changes needed. Residual misses were fixed
+with two fast-lane rules (containment + subtitle-extension, documented in
+`docs/weights.md`); skit/interlude/intro/outro added to VERSION_WORDS.
+`tune()` grid search deferred until pilot review-queue data exists.
 
 ---
 

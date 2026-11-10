@@ -4,6 +4,11 @@ Hard rules (applied before thresholds):
 - version_conflict caps at review: a remix/live/demo must never auto-swap.
 - artist_mismatch (artist_sim < 0.35 with both artists known) forces
   reject: same title + different artist is a cover or coincidence.
+Fast lanes to auto (no conflicting version signal in either case):
+- exact title + near-exact artist (strongest metadata evidence).
+- exact title + artist_contained: feat. narrowing/widening of the credit.
+- title_ext + exact artist: subtitle appended to the same song by the
+  same artist ("Imanin" -> "Imanin bas zihoun").
 """
 
 AUTO_THRESHOLD = 0.90
@@ -29,6 +34,12 @@ def assign(confidence, feats):
         # Exact agreement on both key fields with no conflicting version
         # signal is the strongest evidence metadata can give. Residual
         # risk (unlabeled re-recordings) is accepted and documented.
+        return AUTO
+    if feats.get("title_base_sim") == 1.0 and feats.get("artist_contained"):
+        # Same title, artist credit narrowed or widened (feat. handling).
+        return AUTO
+    if feats.get("title_ext") and artist_sim == 1.0:
+        # Same artist, subtitle appended to the same base title.
         return AUTO
     if confidence >= AUTO_THRESHOLD:
         return AUTO

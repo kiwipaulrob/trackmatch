@@ -80,3 +80,28 @@ def test_score_json_serializable():
 def test_thresholds_sane():
     assert bands.AUTO_THRESHOLD == 0.90
     assert bands.REVIEW_THRESHOLD == 0.60
+
+
+def test_feat_narrowing_fast_lane_auto():
+    feats = pair_features(
+        {"artist": "Chief Keef, Akachi", "title": "Tony Montana Flow"},
+        {"artist": "Chief Keef", "title": "Tony Montana Flow"})
+    conf, _ = score(feats)
+    assert conf < bands.AUTO_THRESHOLD  # still under on pure weights
+    assert bands.assign(conf, feats) == "auto"
+
+
+def test_subtitle_extension_fast_lane_auto():
+    feats = pair_features(
+        {"artist": "Tamikrest", "title": "Imanin"},
+        {"artist": "Tamikrest", "title": "Imanin bas zihoun"})
+    conf, _ = score(feats)
+    assert bands.assign(conf, feats) == "auto"
+
+
+def test_skit_extension_never_auto():
+    feats = pair_features(
+        {"artist": "Chief Keef", "title": "Jesus"},
+        {"artist": "Chief Keef", "title": "Jesus Skit"})
+    conf, _ = score(feats)
+    assert bands.assign(conf, feats) != "auto"

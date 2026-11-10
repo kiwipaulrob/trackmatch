@@ -9,11 +9,13 @@ from .normalize import clean_album, clean_artist, clean_title, split_version
 from .similarity import ratio
 
 # Version segments that mark a DIFFERENT recording. 'feat' credits and
-# 'remaster' are metadata noise, not conflicts.
+# 'remaster' are metadata noise, not conflicts. Spoken interludes
+# (skit/interlude/intro/outro) are separate tracks, not the song.
 VERSION_WORDS = {
     "remix", "remixed", "mix", "live", "demo", "edit", "edited",
     "acoustic", "unplugged", "cover", "reprise", "instrumental",
     "karaoke", "slowed", "sped", "session", "take", "version",
+    "skit", "skito", "interlude", "intro", "outro",
 }
 
 
@@ -43,9 +45,29 @@ def pair_features(old, new):
     except (TypeError, ValueError):
         duration_delta = None
 
+    old_artist = clean_artist(old.get("artist", ""))
+    new_artist = clean_artist(new.get("artist", ""))
+    old_toks, new_toks = set(old_artist.split()), set(new_artist.split())
+    # Feat. narrowing/widening: one artist credit contains the other
+    # ("Chief Keef, Akachi" vs "Chief Keef"). Both must be known.
+    artist_contained = bool(old_artist and new_artist) and (
+        old_toks <= new_toks or new_toks <= old_toks
+    )
+    # Subtitle extension: the longer base starts with the shorter plus a
+    # word boundary ("Imanin bas zihoun" vs "Imanin"). The extension must
+    # carry no version words (blocks "Jesus" -> "Jesus Skit"), and both
+    # artists must be known so two empty credits can't self-confirm.
+    title_ext = False
+    if old_base and new_base and old_base != new_base:
+        short, long = (old_base, new_base) if len(old_base) < len(new_base) \
+            else (new_base, old_base)
+        if long.startswith(short) and long[len(short)] == " ":
+            ext_toks = set(long[len(short):].split())
+            title_ext = (not (ext_toks & VERSION_WORDS)
+                         and bool(old_artist and new_artist))
+
     return {
-        "artist_sim": ratio(clean_artist(old.get("artist", "")),
-                            clean_artist(new.get("artist", ""))),
+        "artist_sim": ratio(old_artist, new_artist),
         "title_sim": ratio(clean_title(old.get("title", "")),
                            clean_title(new.get("title", ""))),
         "title_base_sim": ratio(old_base, new_base),
@@ -62,4 +84,6 @@ def pair_features(old, new):
         "provider_equal": bool(old.get("provider"))
         and old.get("provider") == new.get("provider"),
         "version_conflict": version_conflict,
+        "artist_contained": artist_contained,
+        "title_ext": title_ext,
     }

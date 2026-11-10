@@ -50,3 +50,37 @@ def test_missing_fields_tolerated():
     assert f["artist_sim"] == 1.0  # both empty -> identical
     assert f["duration_delta"] is None
     assert f["provider_equal"] is False
+
+
+def test_artist_contained_feat_narrowing():
+    a = {"artist": "Chief Keef, Akachi", "title": "Tony Montana Flow"}
+    b = {"artist": "Chief Keef", "title": "Tony Montana Flow"}
+    f = pair_features(a, b)
+    assert f["artist_contained"] is True
+    assert f["title_base_sim"] == 1.0
+
+
+def test_artist_contained_requires_known_artists():
+    assert pair_features({"artist": "", "title": "S"},
+                         {"artist": "X", "title": "S"})["artist_contained"] is False
+    assert pair_features({"artist": "", "title": "S"},
+                         {"artist": "", "title": "S"})["artist_contained"] is False
+
+
+def test_title_ext_subtitle_appended():
+    a = {"artist": "Tamikrest", "title": "Imanin"}
+    b = {"artist": "Tamikrest", "title": "Imanin bas zihoun"}
+    f = pair_features(a, b)
+    assert f["title_ext"] is True
+
+
+def test_title_ext_blocked_by_version_word():
+    a = {"artist": "Chief Keef", "title": "Jesus"}
+    b = {"artist": "Chief Keef", "title": "Jesus Skit"}
+    assert pair_features(a, b)["title_ext"] is False
+
+
+def test_title_ext_not_a_substring_match():
+    a = {"artist": "X", "title": "Forever"}
+    b = {"artist": "Y", "title": "A Dream Goes On Forever"}
+    assert pair_features(a, b)["title_ext"] is False

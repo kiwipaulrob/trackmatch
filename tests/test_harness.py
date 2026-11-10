@@ -94,3 +94,30 @@ def test_compare_verdicts():
     rows = compare_decisions(pairs, _new_fn)
     assert [r["verdict"] for r in rows] == ["reproduced", "agree-keep", "agree-keep"]
     assert summarize(rows) == {"reproduced": 1, "agree-keep": 2}
+
+
+def test_shifted_playlist_aligns_by_uri_not_position(tmp_path):
+    """A dropped entry shifts later positions: no phantom swaps."""
+    ma = FakeMA({"99": [
+        {"artist": "X", "title": "Gone", "uri": "library://track/00"},  # inserted
+        {"artist": "A", "title": "One", "uri": "deezer--X://track/1"},
+        {"artist": "B", "title": "Two", "uri": "deezer--X://track/2"},
+        {"artist": "C", "title": "Three", "uri": "deezer--X://track/3"},
+    ]})
+    pairs = list(replay_playlist(_snap(tmp_path), ma))
+    assert len(pairs) == 3
+    assert all(not is_swap(p) for p in pairs)
+    assert [p[1]["uri"] for p in pairs] == [
+        "deezer--X://track/1", "deezer--X://track/2", "deezer--X://track/3"]
+
+
+def test_removed_entry_yields_none(tmp_path):
+    ma = FakeMA({"99": [
+        {"artist": "A", "title": "One", "uri": "deezer--X://track/1"},
+        {"artist": "C", "title": "Three", "uri": "deezer--X://track/3"},
+    ]})
+    pairs = list(replay_playlist(_snap(tmp_path), ma))
+    assert len(pairs) == 3
+    assert pairs[1][0] is not None
+    assert pairs[1][0]["uri"] == "deezer--X://track/2"
+    assert pairs[1][1] is None

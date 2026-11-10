@@ -1,8 +1,8 @@
 """Ground-truth replay: join pre-swap snapshots with live playlist state.
 
 A sweep snapshot holds the ORIGINAL entries (pos/artist/title/uri). The
-live playlist after a successful apply holds the NEW entries at the same
-positions. Positional join gives (old, new-or-None) pairs for free:
+live playlist after a successful apply holds the NEW entries. Alignment by
+URI identity gives (old, new-or-None) pairs for free:
 
 - new is None ......... position vanished (omission / count mismatch)
 - new.uri == old.uri .. untouched stream entry (negative example)
@@ -13,6 +13,7 @@ an ordered list of {artist, title, uri} dicts.
 """
 
 import json
+from difflib import SequenceMatcher
 
 
 def _provider_of(uri):
@@ -23,27 +24,59 @@ def _provider_of(uri):
     return ""
 
 
+def _new_entry(new_track, pos):
+    return {"pos": pos,
+            "artist": new_track.get("artist", ""),
+            "title": new_track.get("title", ""),
+            "uri": new_track.get("uri", ""),
+            "album": new_track.get("album", ""),
+            "duration": new_track.get("duration"),
+            "provider": _provider_of(new_track.get("uri", ""))}
+
+
+def align(old_songs, new_tracks):
+    """Yield (old, new_or_None) aligned by URI identity, not position.
+
+    Rebuilds that drop poison/unavailable entries shift every later
+    position by one — naive positional zipping then reports hundreds of
+    phantom swaps. SequenceMatcher on the URI streams anchors every
+    surviving entry to itself; only genuine replacements surface as
+    swap candidates and true removals surface as (old, None).
+    Live-only insertions have no snapshot counterpart and are skipped.
+    """
+    olds = list(old_songs)
+    news = list(new_tracks)
+    sm = SequenceMatcher(a=[s.get("uri", "") for s in olds],
+                         b=[t.get("uri", "") for t in news],
+                         autojunk=False)
+    for tag, i1, i2, j1, j2 in sm.get_opcodes():
+        if tag == "equal":
+            for o, t in zip(olds[i1:i2], news[j1:j2]):
+                yield o, _new_entry(t, o.get("pos"))
+        elif tag == "replace":
+            ob, nb = olds[i1:i2], news[j1:j2]
+            for k, o in enumerate(ob):
+                yield o, (_new_entry(nb[k], o.get("pos"))
+                          if k < len(nb) else None)
+        elif tag == "delete":
+            for o in olds[i1:i2]:
+                yield o, None
+        elif tag == "insert":
+            continue
+
+
 def replay_playlist(snapshot_path, ma_client):
-    """Yield (old_entry, new_entry_or_None) for each snapshot position."""
+    """Yield (old_entry, new_entry_or_None) for each snapshot song."""
     with open(snapshot_path) as f:
         snap = json.load(f)
-    live = ma_client.playlist_tracks(snap["playlist_id"])
-    live_by_pos = {i + 1: t for i, t in enumerate(live or [])}
-    for song in snap.get("songs", []):
-        old = {"pos": song.get("pos"),
-               "artist": song.get("artist", ""),
-               "title": song.get("title", ""),
-               "uri": song.get("uri", ""),
-               "provider": _provider_of(song.get("uri", ""))}
-        new_track = live_by_pos.get(song.get("pos"))
-        new = None
-        if new_track is not None:
-            new = {"pos": song.get("pos"),
-                   "artist": new_track.get("artist", ""),
-                   "title": new_track.get("title", ""),
-                   "uri": new_track.get("uri", ""),
-                   "provider": _provider_of(new_track.get("uri", ""))}
-        yield old, new
+    live = ma_client.playlist_tracks(snap["playlist_id"]) or []
+    olds = [{"pos": song.get("pos"),
+             "artist": song.get("artist", ""),
+             "title": song.get("title", ""),
+             "uri": song.get("uri", ""),
+             "provider": _provider_of(song.get("uri", ""))}
+            for song in snap.get("songs", [])]
+    yield from align(olds, live)
 
 
 def is_swap(pair):

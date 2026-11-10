@@ -218,3 +218,6 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Replay verdict logs (regenerate with examples/replay_sweep.py)
+replay-verdicts.jsonl
