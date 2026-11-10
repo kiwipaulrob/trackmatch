@@ -48,6 +48,19 @@ def test_cover_is_reject():
     assert bands.assign(conf, feats) == "reject"
 
 
+def test_exact_match_fast_lane():
+    feats = _by_note("Bandcamp pinned entry")
+    conf, _ = score(feats)
+    assert conf < bands.AUTO_THRESHOLD  # missing album keeps it under
+    assert bands.assign(conf, feats) == "auto"
+
+
+def test_spelling_variant_stays_review():
+    feats = _by_note("spelling variant")
+    conf, _ = score(feats)
+    assert bands.assign(conf, feats) == "review"
+
+
 def test_breakdown_sums_to_confidence():
     feats = _pair("same")
     conf, breakdown = score(feats)

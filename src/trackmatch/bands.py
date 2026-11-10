@@ -25,6 +25,11 @@ def assign(confidence, feats):
     artist_sim = feats.get("artist_sim", 1.0)
     if artist_sim < ARTIST_MISMATCH:
         return REJECT
+    if (feats.get("title_base_sim") == 1.0 and artist_sim >= 0.9):
+        # Exact agreement on both key fields with no conflicting version
+        # signal is the strongest evidence metadata can give. Residual
+        # risk (unlabeled re-recordings) is accepted and documented.
+        return AUTO
     if confidence >= AUTO_THRESHOLD:
         return AUTO
     if confidence >= REVIEW_THRESHOLD:
