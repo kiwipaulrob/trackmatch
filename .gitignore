@@ -221,3 +221,7 @@ __marimo__/
 
 # Replay verdict logs (regenerate with examples/replay_sweep.py)
 replay-verdicts.jsonl
+
+# pilot run artifacts (regenerable; summaries live in docs/)
+kexp-pilot-index.pkl
+kexp-pilot.json

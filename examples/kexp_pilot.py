@@ -15,6 +15,7 @@ import argparse
 import importlib.util
 import json
 import os
+import pickle
 import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
@@ -64,9 +65,18 @@ def main():
                                   "args": payload}, timeout=120)
 
     print("fetching library index ...", flush=True)
-    lib = fetch_library_tracks(api_call)
-    print(f"library tracks: {len(lib)}", flush=True)
-    index = build_index(lib)
+    cache = os.environ.get("KEXP_PILOT_INDEX", "kexp-pilot-index.pkl")
+    if os.path.exists(cache):
+        with open(cache, "rb") as f:
+            lib, index = pickle.load(f)
+        print(f"index loaded from cache: {len(lib)} tracks", flush=True)
+    else:
+        lib = fetch_library_tracks(api_call)
+        print(f"library tracks: {len(lib)}", flush=True)
+        index = build_index(lib)
+        with open(cache, "wb") as f:
+            pickle.dump((lib, index), f)
+        print(f"index cached to {cache}", flush=True)
 
     report = {"library_size": len(lib), "playlists": []}
     for pid in args.pids:
@@ -77,7 +87,7 @@ def main():
         tracks = sorted(tracks, key=lambda t: t.get("position", 0))
         rows = {"pid": pid, "total": len(tracks), "auto_same": 0,
                 "would_swap": 0, "review": 0, "reject": 0,
-                "no_candidate": 0, "examples": []}
+                "no_candidate": 0, "examples": [], "new_swaps": []}
         for t in tracks:
             entry = to_entry(t)
             cands = find_candidates(entry, index, k=8)
@@ -96,6 +106,10 @@ def main():
                     rows["auto_same"] += 1
                 else:
                     rows["would_swap"] += 1
+                    rows["new_swaps"].append(
+                        {"pos": t.get("position"), "old_uri": entry["uri"],
+                         "new_uri": best["uri"], "conf": round(conf, 3),
+                         "name": entry["title"], "artists": entry["artist"]})
                     if len(rows["examples"]) < 5:
                         rows["examples"].append(
                             {"pos": t.get("position"), "entry": entry,
@@ -107,8 +121,18 @@ def main():
         _, swaps, stats = dj_sweep.plan_playlist(token, pid, delay=0.2)
         rows["old_swappable"] = stats.get("swappable", 0)
         rows["old_stats"] = stats
-        rows["new_swap_uris"] = None  # filled below if needed
-        print(f"pid {pid}: {rows['total']} tracks -> {rows}", flush=True)
+        rows["old_swaps"] = [
+            {"pos": s[0], "old_uri": s[1], "new_uri": s[2],
+             "name": s[3], "artists": s[4]} for s in (swaps or [])]
+        new_targets = {s["new_uri"] for s in rows["new_swaps"]}
+        old_targets = {s["new_uri"] for s in rows["old_swaps"]}
+        rows["agree_same_target"] = len(new_targets & old_targets)
+        rows["new_only"] = len(new_targets - old_targets)
+        rows["old_only"] = len(old_targets - new_targets)
+        summary = {k: (len(v) if isinstance(v, list) else v)
+                   for k, v in rows.items()
+                   if k not in ("new_swaps", "old_swaps", "examples")}
+        print(f"pid {pid}: {rows['total']} tracks -> {summary}", flush=True)
         report["playlists"].append(rows)
 
     with open(args.out, "w") as f:

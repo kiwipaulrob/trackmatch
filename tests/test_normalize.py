@@ -55,3 +55,11 @@ def test_artist_the_reorder():
 def test_va_markers():
     for va in ("Various Artists", "various", "VA", "unknown", ""):
         assert clean_artist(va) == "", va
+
+
+def test_diacritics_folded_not_deleted():
+    from trackmatch.normalize import clean_artist, clean_title
+    assert clean_title("Ísjaki") == clean_title("Isjaki") == "isjaki"
+    assert clean_artist("Sigur Rós") == clean_artist("Sigur Ros")
+    assert clean_artist("Ságan") == "sagan"
+    assert clean_title("Calígula") == "caligula"

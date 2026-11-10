@@ -55,17 +55,18 @@ live in `adapters/`.
 
 ## Install
 
-Stdlib only — no third-party dependencies.
+Stdlib only — no third-party dependencies. (An optional `speed` extra
+adds rapidfuzz as a faster string-compare backend; the core falls back
+to difflib without it.)
 
     git clone https://github.com/kiwipaulrob/trackmatch.git
     cd trackmatch
-    python3 -m pytest tests/ -q   # 55 tests, incl. a 4k x 100k prefilter perf test
+    python3 -m pytest tests/ -q   # 58 tests, incl. a 4k x 100k prefilter perf test
 
-Python 3.10+. The `examples/` runners that talk to Music Assistant need
+Python 3.11+. The `examples/` runners that talk to Music Assistant need
 the MA websocket helper they import via `MA_SCRIPTS_DIR` (default
 `/root/.hermes/scripts`, not part of this repo); everything under `src/`
-and `tests/` runs anywhere. (The `[test]` extra in `pyproject.toml` is a
-leftover alias — plain `pytest` from your environment is all you need.)
+and `tests/` runs anywhere.
 
 ## Quickstart
 
@@ -96,13 +97,15 @@ Review queue for the uncertain rows:
 
 ## Validation
 
-- **Replay harness** (`harness.py`, `examples/replay_sweep.py`): 7 swept
-  playlists (872 positions, 97 genuine swaps, snapshot-to-live joined by
-  URI identity) — the engine auto-reproduces 88/88 genuine swaps; the 9
-  residuals are stale-snapshot artifacts correctly rejected.
-- **KEXP pilot** (`examples/kexp_pilot.py`, `docs/kexp-pilot.md`): 7 KEXP
-  monthlies dry-run against the old binary matcher — see the doc for the
-  comparison table.
+- **Replay harness** (`harness.py`, `examples/replay_sweep.py`): every swept
+  snapshot replayed (10 Nov 2026: 7238 positions, 257 performed swaps) —
+  the engine auto-reproduces 226 (88%); the 31 misses are old false
+  positives correctly refused plus ambiguous pairs queued for review
+  (verdict sets verified identical before/after the pilot fixes).
+- **KEXP pilot** (`examples/kexp_pilot.py`, `docs/kexp-pilot.md`): 6 KEXP
+  monthlies (3365 entries) dry-run against the old binary matcher — 91.3%
+  same-song agreement, +220 net new exact-match swaps, three scoring bugs
+  found and fixed. See the doc for the comparison table.
 - Tuning rationale and metric tables: `docs/weights.md`.
 
 ## Project layout
@@ -116,6 +119,6 @@ Review queue for the uncertain rows:
 ## Status
 
 Phases 1–4 per `docs/plans/2026-11-10-trackmatch-a.md`: scorer, replay
-validation, review queue, MA adapter, KEXP pilot — done. Cutover
-(`rebuild_playlist`: snapshot → remove → add → verify) and `v0.1.0` tag
-are next; see Task 15 in the plan.
+validation, review queue, MA adapter, KEXP pilot — done and tagged
+`v0.1.0`. Cutover (`rebuild_playlist`: snapshot → remove → add → verify)
+is next; see Task 15 in the plan.

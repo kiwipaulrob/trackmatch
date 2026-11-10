@@ -121,3 +121,15 @@ def test_removed_entry_yields_none(tmp_path):
     assert pairs[1][0] is not None
     assert pairs[1][0]["uri"] == "deezer--X://track/2"
     assert pairs[1][1] is None
+
+
+def test_contained_artist_low_ratio_not_forced_reject():
+    """'War' vs 'Eric Burdon and War': token-subset credit must survive a
+    sub-0.35 difflib ratio (KEXP pilot: same recording forced to reject)."""
+    from trackmatch import bands
+    from trackmatch.features import pair_features
+    feats = pair_features({"artist": "War", "title": "Spill the Wine"},
+                          {"artist": "Eric Burdon & WAR",
+                           "title": "Spill the Wine"})
+    assert feats["artist_contained"] and feats["artist_sim"] < 0.35
+    assert bands.assign(0.69, feats) != "reject"

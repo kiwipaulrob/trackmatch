@@ -28,7 +28,11 @@ def assign(confidence, feats):
             return REVIEW
         return REJECT
     artist_sim = feats.get("artist_sim", 1.0)
-    if artist_sim < ARTIST_MISMATCH:
+    if artist_sim < ARTIST_MISMATCH and not feats.get("artist_contained"):
+        # Same title + different artist is a cover or coincidence. The
+        # containment carve-out keeps feat. narrowing/widening
+        # ("War" vs "Eric Burdon and War") on the scoring path instead of
+        # forcing reject on a low difflib ratio for a token-subset credit.
         return REJECT
     if (feats.get("title_base_sim") == 1.0 and artist_sim >= 0.9):
         # Exact agreement on both key fields with no conflicting version

@@ -6,7 +6,7 @@ postings so `find_candidates` answers each entry with an inverted-index
 lookup instead of scanning 100k tracks. Full scorer runs on the top-k.
 """
 
-from trackmatch.normalize import split_version
+from trackmatch.normalize import clean_artist, split_version
 
 #: Tokens too common to discriminate (dropped from postings/queries).
 STOPWORDS = frozenset({
@@ -21,6 +21,11 @@ def title_tokens(title):
     return {t for t in base.split() if t and t not in STOPWORDS}
 
 
+def artist_tokens(artist):
+    """Token set of the cleaned artist string (feat. credits cut)."""
+    return set(clean_artist(artist).split())
+
+
 def build_index(tracks):
     """Build a search index over candidate dicts.
 
@@ -32,7 +37,8 @@ def build_index(tracks):
     for t in tracks:
         toks = title_tokens(t.get("title", ""))
         idx = len(docs)
-        docs.append(dict(t, _tokens=toks))
+        docs.append(dict(t, _tokens=toks,
+                         _atokens=artist_tokens(t.get("artist", ""))))
         for tok in toks:
             postings.setdefault(tok, []).append(idx)
     return {"tracks": docs, "postings": postings}
@@ -43,10 +49,14 @@ def _public(doc):
 
 
 def find_candidates(entry, index, k=8):
-    """Top-k index tracks by title-base token overlap with entry title.
+    """Top-k index tracks by title-token JACCARD with the entry title.
 
-    Ties break toward lower library position (stable, deterministic).
-    Returns public candidate dicts (no private index keys).
+    Raw overlap counts drown exact matches when one common token (e.g.
+    "holy") hits hundreds of tracks and truncation keeps an arbitrary 8;
+    Jaccard ranks the 1-token exact title 1.0 and a 7-token partial ~0.14
+    (overlap coefficient can't do this: with a 1-token query every hit
+    scores 1.0). Ties break on raw overlap, then lower library position
+    (stable, deterministic). Returns public candidate dicts.
     """
     toks = title_tokens(entry.get("title", ""))
     if not toks:
@@ -59,8 +69,14 @@ def find_candidates(entry, index, k=8):
             counts[idx] = counts.get(idx, 0) + 1
     if not counts:
         return []
-    top = sorted(counts, key=lambda i: (-counts[i], i))[:k]
-    return [_public(tracks[i]) for i in top]
+    n = len(toks)
+    atoks = artist_tokens(entry.get("artist", ""))
+    ranked = sorted(counts,
+                    key=lambda i: (-counts[i] / (n + len(tracks[i]["_tokens"])
+                                                - counts[i]),
+                                   -len(atoks & tracks[i]["_atokens"]),
+                                   -counts[i], i))[:k]
+    return [_public(tracks[i]) for i in ranked]
 
 
 def _track_to_candidate(t):

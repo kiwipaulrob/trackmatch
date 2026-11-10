@@ -153,3 +153,53 @@ def test_rebuild_playlist_prefetch_failure_no_mutation():
         assert False, "should have raised"
     except RebuildError as e:
         assert "pre-mutation" in str(e)
+
+
+def _mk(artist, title, uri):
+    return {"artist": artist, "title": title, "uri": uri, "album": "",
+            "duration": None, "provider": "library"}
+
+
+def test_prefilter_exact_short_title_among_many_partials():
+    """'Holy Holy' (1 token) must surface above hundreds of partials.
+
+    Regression: raw overlap counts + top-8 truncation drowned the exact
+    match when a common token hit many long titles (KEXP pilot, Jun 2026).
+    """
+    from trackmatch.adapters.ma import build_index, find_candidates
+    lib = [_mk(f"Choir {i}", f"Ah Holy Jesus part {i} hallelujah amen",
+               f"library://track/{i}") for i in range(50)]
+    lib.append(_mk("Wye Oak", "Holy Holy", "library://track/exact"))
+    # single-token same-set distractors: Jaccard ties 1.0-1.0, artist
+    # overlap must break the tie toward the same-artist exact title.
+    lib += [_mk(f"Singer {i}", "Holy", f"library://track/h{i}")
+            for i in range(12)]
+    index = build_index(lib)
+    cands = find_candidates({"artist": "Wye Oak", "title": "Holy Holy",
+                             "uri": "deezer://track/1", "album": "Civilian",
+                             "duration": 276, "provider": "deezer"}, index)
+    uris = [c["uri"] for c in cands]
+    assert "library://track/exact" in uris, uris
+    assert uris[0] == "library://track/exact"
+
+
+def test_prefilter_end_to_end_auto_band():
+    from trackmatch import bands
+    from trackmatch.adapters.ma import build_index, find_candidates
+    from trackmatch.features import pair_features
+    from trackmatch.score import score
+    lib = [_mk(f"Choir {i}", f"Ah Holy Jesus part {i} hallelujah amen",
+               f"library://track/{i}") for i in range(50)]
+    lib.append(_mk("Wye Oak", "Holy Holy", "library://track/exact"))
+    index = build_index(lib)
+    entry = {"artist": "Wye Oak", "title": "Holy Holy",
+             "uri": "deezer://track/1", "album": "Civilian",
+             "duration": 276, "provider": "deezer"}
+    best = None
+    for c in find_candidates(entry, index):
+        feats = pair_features(entry, c)
+        conf, _ = score(feats)
+        if best is None or conf > best[0]:
+            best = (conf, bands.assign(conf, feats), c)
+    assert best[2]["uri"] == "library://track/exact"
+    assert best[1] == "auto", best

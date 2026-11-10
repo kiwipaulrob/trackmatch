@@ -6,6 +6,7 @@ punctuation) and the beets string-distance pre-normalization
 """
 
 import re
+import unicodedata
 
 _TRACK_NUM = re.compile(r"^(?:\d{1,3}\s*-\s*)?\d{1,3}\b[\s.\-]+")
 _NON_ALNUM = re.compile(r"[^a-z0-9 ]+")
@@ -17,10 +18,16 @@ _END_WORDS = ("the", "a", "an")
 
 
 def _basic(text):
-    """Lowercase, drop non-alphanumerics (except spaces), collapse runs."""
+    """Lowercase, fold diacritics, drop non-alphanumerics, collapse runs.
+
+    NFKD folding keeps 'ísjaki' == 'isjaki' and 'sigur rós' == 'sigur ros';
+    without it the accent chars are deleted ('sjaki', 'sigur r s').
+    """
     if not text:
         return ""
     text = str(text).lower().replace("&", " and ")
+    text = "".join(c for c in unicodedata.normalize("NFKD", text)
+                   if not unicodedata.combining(c))
     text = _NON_ALNUM.sub(" ", text)
     return _MULTI_SPACE.sub(" ", text).strip()
 
